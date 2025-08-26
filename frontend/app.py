@@ -170,152 +170,169 @@ with col1:
         st.session_state.uploaded_file = uploaded_file
 
 if uploaded_file:
-    with col1:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="📷 Original Image", use_column_width=True)
-        
-        # Show original predictions
-        with st.spinner("🔍 Getting predictions..."):
-            buf = io.BytesIO()
-            image.save(buf, format="PNG")
+    # Get original predictions first
+    image = Image.open(uploaded_file).convert("RGB")
+    with st.spinner("🔍 Getting predictions..."):
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        buf.seek(0)
+        files = {"file": buf}
+        predict_data = {"model_name": model_name}
+        try:
+            pred_resp = requests.post(f"{API_URL}/predict/", files=files, data=predict_data)
+            orig_preds = pred_resp.json()
+        except requests.exceptions.RequestException:
+            st.error("❌ Cannot connect to backend API. Make sure the FastAPI server is running.")
+            st.stop()
+    
+    # Attack configuration section - full width
+    st.markdown("---")
+    st.subheader("⚔️ Attack Configuration")
+    st.info(f"""
+    **Current Configuration:**
+    - Model: {model_name}
+    - Attack: {attack_type}
+    - Parameters: {
+        f"ε={epsilon}" if attack_type in ["FGSM", "PGD"] else
+        f"Steps={steps}" if attack_type == "PGD" else
+        f"Kernel={kernel_size}" if attack_type == "GaussianBlur" else
+        f"Noise={noise_level}" if attack_type == "SaltPepper" else
+        "Default patch"
+    }
+    """)
+    
+    # Launch attack button - full width
+    attack_clicked = st.button("🚀 Launch Attack", key="attack_btn", help="Generate adversarial example")
+    
+    # Images section - inline
+    st.markdown("---")
+    st.subheader("📷 Images Comparison")
+    img_col1, img_col2 = st.columns(2)
+    
+    with img_col1:
+        st.image(image, caption="📷 Original Image", use_container_width=True)
+    
+    with img_col2:
+        # Placeholder for adversarial image
+        adv_placeholder = st.empty()
+    
+    # Predictions section - inline  
+    st.subheader("🎯 Predictions Comparison")
+    pred_col1, pred_col2 = st.columns(2)
+    
+    with pred_col1:
+        st.markdown("**Original Predictions**")
+        for i, pred in enumerate(orig_preds[:3]):  # Show top 3
+            st.markdown(f"**{i+1}.** {pred['class']}")
+            st.progress(pred['probability'])
+            st.caption(f"Confidence: {pred['probability']:.3f}")
+    
+    with pred_col2:
+        # Placeholder for adversarial predictions
+        adv_pred_placeholder = st.empty()
+    
+    if attack_clicked:
+        with st.spinner("🛡️ Generating adversarial example..."):
+            attack_data = {
+                "model_name": model_name,
+                "attack_type": attack_type,
+                "epsilon": epsilon,
+                "steps": steps,
+                "kernel_size": kernel_size,
+                "noise_level": noise_level
+            }
             buf.seek(0)
             files = {"file": buf}
-            predict_data = {"model_name": model_name}
+            
             try:
-                pred_resp = requests.post(f"{API_URL}/predict/", files=files, data=predict_data)
-                orig_preds = pred_resp.json()
+                attack_resp = requests.post(f"{API_URL}/attack/", files=files, data=attack_data)
+                result = attack_resp.json()
                 
-                st.subheader("🎯 Original Predictions")
-                for i, pred in enumerate(orig_preds[:3]):  # Show top 3
-                    st.markdown(f"**{i+1}.** {pred['class']}")
-                    st.progress(pred['probability'])
-                    st.caption(f"Confidence: {pred['probability']:.3f}")
+                if "error" in result:
+                    st.error(f"❌ Attack failed: {result['error']}")
+                else:
+                    # Update adversarial image placeholder
+                    adv_image_b64 = result["adv_image"]
+                    adv_image = Image.open(io.BytesIO(base64.b64decode(adv_image_b64)))
+                    with adv_placeholder.container():
+                        st.image(adv_image, caption="⚔️ Adversarial Image", use_container_width=True)
                     
-            except requests.exceptions.RequestException:
-                st.error("❌ Cannot connect to backend API. Make sure the FastAPI server is running.")
-                st.stop()
-    
-    with col2:
-        st.subheader("⚔️ Run Adversarial Attack")
-        
-        # Attack configuration display
-        st.info(f"""
-        **Current Configuration:**
-        - Model: {model_name}
-        - Attack: {attack_type}
-        - Parameters: {
-            f"ε={epsilon}" if attack_type in ["FGSM", "PGD"] else
-            f"Steps={steps}" if attack_type == "PGD" else
-            f"Kernel={kernel_size}" if attack_type == "GaussianBlur" else
-            f"Noise={noise_level}" if attack_type == "SaltPepper" else
-            "Default patch"
-        }
-        """)
-        
-        # Attack button with custom styling
-        attack_clicked = st.button("🚀 Launch Attack", key="attack_btn", help="Generate adversarial example")
-        
-        if attack_clicked:
-            with st.spinner("🛡️ Generating adversarial example..."):
-                attack_data = {
-                    "model_name": model_name,
-                    "attack_type": attack_type,
-                    "epsilon": epsilon,
-                    "steps": steps,
-                    "kernel_size": kernel_size,
-                    "noise_level": noise_level
-                }
-                buf.seek(0)
-                files = {"file": buf}
-                
-                try:
-                    attack_resp = requests.post(f"{API_URL}/attack/", files=files, data=attack_data)
-                    result = attack_resp.json()
-                    
-                    if "error" in result:
-                        st.error(f"❌ Attack failed: {result['error']}")
-                    else:
-                        # Display adversarial image
-                        adv_image_b64 = result["adv_image"]
-                        adv_image = Image.open(io.BytesIO(base64.b64decode(adv_image_b64)))
-                        st.image(adv_image, caption="⚔️ Adversarial Image", use_column_width=True)
-                        
-                        # Show adversarial predictions
-                        st.subheader("🎯 Adversarial Predictions")
-                        adv_preds = result["adversarial"]
+                    # Update adversarial predictions placeholder
+                    adv_preds = result["adversarial"]
+                    with adv_pred_placeholder.container():
+                        st.markdown("**Adversarial Predictions**")
                         for i, pred in enumerate(adv_preds[:3]):  # Show top 3
                             st.markdown(f"**{i+1}.** {pred['class']}")
                             st.progress(pred['probability'])
                             st.caption(f"Confidence: {pred['probability']:.3f}")
-                            
-                except requests.exceptions.RequestException:
-                    st.error("❌ Attack request failed. Check backend server.")
-
-    # Comparison section
-    if uploaded_file and 'orig_preds' in locals() and attack_clicked and 'result' in locals() and "error" not in result:
-        st.markdown("---")
-        st.subheader("📊 Prediction Comparison")
-        
-        # Create comparison chart
-        col_chart1, col_chart2 = st.columns(2)
-        
-        with col_chart1:
-            st.markdown("**Original Predictions**")
-            orig_classes = [p["class"][:15] + "..." if len(p["class"]) > 15 else p["class"] for p in orig_preds[:5]]
-            orig_probs = [p["probability"] for p in orig_preds[:5]]
-            
-            fig1, ax1 = plt.subplots(figsize=(8, 6))
-            bars1 = ax1.barh(orig_classes, orig_probs, color='#4ECDC4', alpha=0.8)
-            ax1.set_xlabel("Probability")
-            ax1.set_title("Original")
-            ax1.set_xlim(0, 1)
-            
-            # Add value labels on bars
-            for bar, prob in zip(bars1, orig_probs):
-                ax1.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
-                        f'{prob:.3f}', ha='left', va='center')
-            
-            plt.tight_layout()
-            st.pyplot(fig1)
-        
-        with col_chart2:
-            st.markdown("**Adversarial Predictions**")
-            adv_classes = [p["class"][:15] + "..." if len(p["class"]) > 15 else p["class"] for p in adv_preds[:5]]
-            adv_probs = [p["probability"] for p in adv_preds[:5]]
-            
-            fig2, ax2 = plt.subplots(figsize=(8, 6))
-            bars2 = ax2.barh(adv_classes, adv_probs, color='#FF6B6B', alpha=0.8)
-            ax2.set_xlabel("Probability")
-            ax2.set_title("Adversarial")
-            ax2.set_xlim(0, 1)
-            
-            # Add value labels on bars
-            for bar, prob in zip(bars2, adv_probs):
-                ax2.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
-                        f'{prob:.3f}', ha='left', va='center')
-            
-            plt.tight_layout()
-            st.pyplot(fig2)
-        
-        # Attack success metrics
-        st.markdown("---")
-        st.subheader("📈 Attack Analysis")
-        
-        col_metric1, col_metric2, col_metric3 = st.columns(3)
-        
-        with col_metric1:
-            orig_top1 = orig_preds[0]["class"]
-            adv_top1 = adv_preds[0]["class"]
-            success = "✅ Success" if orig_top1 != adv_top1 else "❌ Failed"
-            st.metric("Attack Status", success)
-        
-        with col_metric2:
-            conf_drop = orig_preds[0]["probability"] - adv_preds[0]["probability"]
-            st.metric("Confidence Drop", f"{conf_drop:.3f}")
-        
-        with col_metric3:
-            ranking_change = "Changed" if orig_top1 != adv_top1 else "Unchanged"
-            st.metric("Top Prediction", ranking_change)
+                    
+                    # Analysis section
+                    st.markdown("---")
+                    st.subheader("📊 Detailed Analysis")
+                    
+                    # Create comparison chart
+                    chart_col1, chart_col2 = st.columns(2)
+                    
+                    with chart_col1:
+                        st.markdown("**Original Predictions Chart**")
+                        orig_classes = [p["class"][:15] + "..." if len(p["class"]) > 15 else p["class"] for p in orig_preds[:5]]
+                        orig_probs = [p["probability"] for p in orig_preds[:5]]
+                        
+                        fig1, ax1 = plt.subplots(figsize=(8, 6))
+                        bars1 = ax1.barh(orig_classes, orig_probs, color='#4ECDC4', alpha=0.8)
+                        ax1.set_xlabel("Probability")
+                        ax1.set_title("Original")
+                        ax1.set_xlim(0, 1)
+                        
+                        # Add value labels on bars
+                        for bar, prob in zip(bars1, orig_probs):
+                            ax1.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
+                                    f'{prob:.3f}', ha='left', va='center')
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig1)
+                    
+                    with chart_col2:
+                        st.markdown("**Adversarial Predictions Chart**")
+                        adv_classes = [p["class"][:15] + "..." if len(p["class"]) > 15 else p["class"] for p in adv_preds[:5]]
+                        adv_probs = [p["probability"] for p in adv_preds[:5]]
+                        
+                        fig2, ax2 = plt.subplots(figsize=(8, 6))
+                        bars2 = ax2.barh(adv_classes, adv_probs, color='#FF6B6B', alpha=0.8)
+                        ax2.set_xlabel("Probability")
+                        ax2.set_title("Adversarial")
+                        ax2.set_xlim(0, 1)
+                        
+                        # Add value labels on bars
+                        for bar, prob in zip(bars2, adv_probs):
+                            ax2.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
+                                    f'{prob:.3f}', ha='left', va='center')
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig2)
+                    
+                    # Attack success metrics
+                    st.markdown("---")
+                    st.subheader("📈 Attack Analysis")
+                    
+                    col_metric1, col_metric2, col_metric3 = st.columns(3)
+                    
+                    with col_metric1:
+                        orig_top1 = orig_preds[0]["class"]
+                        adv_top1 = adv_preds[0]["class"]
+                        success = "✅ Success" if orig_top1 != adv_top1 else "❌ Failed"
+                        st.metric("Attack Status", success)
+                    
+                    with col_metric2:
+                        conf_drop = orig_preds[0]["probability"] - adv_preds[0]["probability"]
+                        st.metric("Confidence Drop", f"{conf_drop:.3f}")
+                    
+                    with col_metric3:
+                        ranking_change = "Changed" if orig_top1 != adv_top1 else "Unchanged"
+                        st.metric("Top Prediction", ranking_change)
+                        
+            except requests.exceptions.RequestException:
+                st.error("❌ Attack request failed. Check backend server.")
 
 else:
     st.info("👆 Please upload an image to start the adversarial attack demo!")
