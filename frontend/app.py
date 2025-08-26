@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 
 API_URL = "http://localhost:8000"
 
-epsilon = st.slider("Epsilon (FGSM/PGD)", 0.0, 0.3, 0.03)
 
 # Session state for reset functionality
 if "reset" not in st.session_state:
@@ -28,8 +27,20 @@ if "kernel_size" not in st.session_state:
 if "noise_level" not in st.session_state:
     st.session_state.noise_level = 0.05
 
+
 st.title("Adversarial Attacks on Pretrained CV Models")
 
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+if uploaded_file:
+    st.session_state.uploaded_file = uploaded_file
+model_name = st.selectbox("Select Model", ["ResNet18", "EfficientNet_B0", "MobileNetV2"], index=["ResNet18", "EfficientNet_B0", "MobileNetV2"].index(st.session_state.model_name))
+attack_type = st.selectbox("Select Attack", ["FGSM", "PGD", "GaussianBlur", "SaltPepper", "Patch"], index=["FGSM", "PGD", "GaussianBlur", "SaltPepper", "Patch"].index(st.session_state.attack_type))
+epsilon = st.slider("Epsilon (FGSM/PGD)", 0.0, 0.3, st.session_state.epsilon, key="epsilon_slider")
+steps = st.slider("Steps (PGD)", 1, 50, st.session_state.steps, key="steps_slider")
+kernel_size = st.slider("Kernel Size (Blur)", 1, 15, st.session_state.kernel_size, key="kernel_slider")
+noise_level = st.slider("Noise Level (Salt & Pepper)", 0.0, 0.2, st.session_state.noise_level, key="noise_slider")
+
+# Place the reset button at the bottom of all sliders
 if st.button("Reset"):
     st.session_state.uploaded_file = None
     st.session_state.model_name = "ResNet18"
@@ -39,16 +50,6 @@ if st.button("Reset"):
     st.session_state.kernel_size = 3
     st.session_state.noise_level = 0.05
     st.experimental_rerun()
-
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
-if uploaded_file:
-    st.session_state.uploaded_file = uploaded_file
-model_name = st.selectbox("Select Model", ["ResNet18", "EfficientNet_B0", "MobileNetV2"], index=["ResNet18", "EfficientNet_B0", "MobileNetV2"].index(st.session_state.model_name))
-attack_type = st.selectbox("Select Attack", ["FGSM", "PGD", "GaussianBlur", "SaltPepper", "Patch"], index=["FGSM", "PGD", "GaussianBlur", "SaltPepper", "Patch"].index(st.session_state.attack_type))
-epsilon = st.slider("Epsilon (FGSM/PGD)", 0.0, 0.3, st.session_state.epsilon)
-steps = st.slider("Steps (PGD)", 1, 50, st.session_state.steps)
-kernel_size = st.slider("Kernel Size (Blur)", 1, 15, st.session_state.kernel_size)
-noise_level = st.slider("Noise Level (Salt & Pepper)", 0.0, 0.2, st.session_state.noise_level)
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
