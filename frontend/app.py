@@ -254,25 +254,34 @@ if uploaded_file:
             
             try:
                 attack_resp = requests.post(f"{API_URL}/attack/", files=files, data=attack_data)
-                result = attack_resp.json()
                 
-                if "error" in result:
-                    st.error(f"❌ Attack failed: {result['error']}")
+                # Check if request was successful
+                if attack_resp.status_code != 200:
+                    st.error(f"❌ Attack failed with status {attack_resp.status_code}: {attack_resp.text}")
                 else:
-                    # Update adversarial image placeholder
-                    adv_image_b64 = result["adv_image"]
-                    adv_image = Image.open(io.BytesIO(base64.b64decode(adv_image_b64)))
-                    with adv_placeholder.container():
-                        st.image(adv_image, caption="⚔️ Adversarial Image", use_container_width=True)
+                    result = attack_resp.json()
                     
-                    # Update adversarial predictions placeholder
-                    adv_preds = result["adversarial"]
-                    with adv_pred_placeholder.container():
-                        st.markdown("**Adversarial Predictions**")
-                        for i, pred in enumerate(adv_preds[:3]):  # Show top 3
-                            st.markdown(f"**{i+1}.** {pred['class']}")
-                            st.progress(pred['probability'])
-                            st.caption(f"Confidence: {pred['probability']:.3f}")
+                    # Check if response contains error
+                    if "error" in result:
+                        st.error(f"❌ Attack failed: {result['error']}")
+                    elif "adv_image" not in result:
+                        st.error(f"❌ Attack response missing adversarial image. Response keys: {list(result.keys())}")
+                    else:
+                        # Success - process the results
+                        # Update adversarial image placeholder
+                        adv_image_b64 = result["adv_image"]
+                        adv_image = Image.open(io.BytesIO(base64.b64decode(adv_image_b64)))
+                        with adv_placeholder.container():
+                            st.image(adv_image, caption="⚔️ Adversarial Image", use_container_width=True)
+                        
+                        # Update adversarial predictions placeholder
+                        adv_preds = result["adversarial"]
+                        with adv_pred_placeholder.container():
+                            st.markdown("**Adversarial Predictions**")
+                            for i, pred in enumerate(adv_preds[:3]):  # Show top 3
+                                st.markdown(f"**{i+1}.** {pred['class']}")
+                                st.progress(pred['probability'])
+                                st.caption(f"Confidence: {pred['probability']:.3f}")
                     
                     # Analysis section
                     st.markdown("---")
