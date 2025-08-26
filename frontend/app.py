@@ -87,7 +87,8 @@ with st.sidebar:
         "Choose Model", 
         ["ResNet18", "EfficientNet_B0", "MobileNetV2"], 
         index=["ResNet18", "EfficientNet_B0", "MobileNetV2"].index(st.session_state.model_name),
-        help="Select the pretrained model to attack"
+        help="Select the pretrained model to attack",
+        key="model_selectbox"
     )
     
     # Attack type selection
@@ -96,7 +97,8 @@ with st.sidebar:
         "Choose Attack", 
         ["FGSM", "PGD", "GaussianBlur", "SaltPepper", "Patch"], 
         index=["FGSM", "PGD", "GaussianBlur", "SaltPepper", "Patch"].index(st.session_state.attack_type),
-        help="Select the type of adversarial attack"
+        help="Select the type of adversarial attack",
+        key="attack_selectbox"
     )
     
     # Attack parameters
@@ -147,6 +149,12 @@ with st.sidebar:
     
     # Reset button
     if st.button("🔄 Reset All", help="Reset to default values"):
+        # Clear all session state keys that need to be reset
+        for key in ["model_selectbox", "attack_selectbox", "epsilon_slider", "steps_slider", "kernel_slider", "noise_slider"]:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        # Reset session state values
         st.session_state.uploaded_file = None
         st.session_state.model_name = "ResNet18"
         st.session_state.attack_type = "FGSM"
