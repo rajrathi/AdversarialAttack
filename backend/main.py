@@ -6,6 +6,7 @@ from .utils import preprocess_image, get_top5_predictions, image_to_base64
 from .attacks import fgsm, pgd, blur, sp_noise, patch
 import io
 import torch
+import numpy as np
 from PIL import Image
 import logging
 
@@ -73,21 +74,42 @@ async def attack(
         orig_preds = get_top5_predictions(model, input_tensor)
         
         # Generate adversarial example
-        if attack_type == "FGSM":
-            adv_tensor = fgsm(model, input_tensor, epsilon)
-        elif attack_type == "PGD":
-            adv_tensor = pgd(model, input_tensor, epsilon, steps)
-        elif attack_type == "GaussianBlur":
-            adv_tensor = blur(input_tensor, kernel_size)
-        elif attack_type == "SaltPepper":
-            adv_tensor = sp_noise(input_tensor, noise_level)
-        elif attack_type == "Patch":
-            adv_tensor = patch(input_tensor)
+        try:
+            if attack_type == "FGSM":
+                adv_tensor = fgsm(model, input_tensor, epsilon)
+            elif attack_type == "PGD":
+                adv_tensor = pgd(model, input_tensor, epsilon, steps)
+            elif attack_type == "GaussianBlur":
+                adv_tensor = blur(input_tensor, kernel_size)
+            elif attack_type == "SaltPepper":
+                adv_tensor = sp_noise(input_tensor, noise_level)
+            elif attack_type == "Patch":
+                adv_tensor = patch(input_tensor)
+            
+            # Validate adversarial tensor
+            if adv_tensor is None or adv_tensor.shape != input_tensor.shape:
+                raise ValueError(f"Invalid adversarial tensor shape or None result from {attack_type}")
+                
+        except Exception as attack_error:
+            logger.error(f"Attack {attack_type} failed: {str(attack_error)}")
+            raise HTTPException(status_code=500, detail=f"Attack {attack_type} failed: {str(attack_error)}")
         
         # Convert adversarial tensor back to image
-        adv_numpy = adv_tensor.squeeze().permute(1, 2, 0).cpu().numpy()
-        adv_numpy = (adv_numpy * 255).clip(0, 255).astype('uint8')
-        adv_image = Image.fromarray(adv_numpy)
+        try:
+            adv_numpy = adv_tensor.squeeze().permute(1, 2, 0).cpu().numpy()
+            
+            # Handle different tensor shapes
+            if len(adv_numpy.shape) == 2:  # Grayscale
+                adv_numpy = np.stack([adv_numpy] * 3, axis=-1)
+            elif adv_numpy.shape[2] == 1:  # Single channel
+                adv_numpy = np.repeat(adv_numpy, 3, axis=2)
+            
+            adv_numpy = (adv_numpy * 255).clip(0, 255).astype('uint8')
+            adv_image = Image.fromarray(adv_numpy)
+            
+        except Exception as convert_error:
+            logger.error(f"Tensor to image conversion failed: {str(convert_error)}")
+            raise HTTPException(status_code=500, detail=f"Image conversion failed: {str(convert_error)}")
         
         adv_preds = get_top5_predictions(model, adv_tensor)
         adv_image_b64 = image_to_base64(adv_image)
