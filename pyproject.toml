@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.116.1",
+    "google-genai>=1.32.0",
     "matplotlib>=3.9.4",
     "pillow>=11.3.0",
     "python-multipart>=0.0.20",
